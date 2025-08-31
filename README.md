@@ -1,10 +1,9 @@
+## ****BEARMONY** — MIDI Chord, Apeggio & Progression Tool
 
-````
-# Bearmony — MIDI Chord & Progression Tool
-
-Bearmony turns chords and progressions into MIDI. Pick root notes, chord types/sizes, roman-numeral progressions, and arpeggio modes (Asc / Desc / Up-Down / Random). Control tempo, note value, velocity, loops, basic FX, and General MIDI instrument. Playback uses FluidSynth with a SoundFont you provide.
-
----
+**Bearmony** turns chords and progressions into MIDI. 
+Pick root notes, chord types/sizes, roman-numeral progressions, and arpeggio modes (Asc / Desc / Up-Down / Random). 
+Control tempo, note value, velocity, loops, basic FX, and General MIDI instrument. 
+Playback uses FluidSynth with a SoundFont you provide.
 
 ## Features
 - Chords and full progressions
@@ -14,14 +13,12 @@ Bearmony turns chords and progressions into MIDI. Pick root notes, chord types/s
 - Live playback (FluidSynth + SoundFont)
 - MIDI export (chord or progression)
 
----
 
 ## Requirements
 - Python **3.11** recommended (3.8+ supported).  
-  macOS: use the Python.org installer (includes Tkinter).
 - Install deps:
-  ```bash
-  pip install -r requirements.txt
+````
+pip install -r requirements.txt
 ````
 
 * For playback you need:
