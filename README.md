@@ -1,4 +1,4 @@
-## **BEARMONY MidiGeb (Demo)** — MIDI Chord, Apeggio & Progression Tool
+## **BEARMONY MidiGen (Demo)** — MIDI Chord, Apeggio & Progression Tool
 
 **Bearmony** Bearmony MidiGen (Demo) – a simple program with a library of all musical chord and scale combinations, featuring real-time playback on various instruments and the ability to create MIDI files for songwriting.
 
