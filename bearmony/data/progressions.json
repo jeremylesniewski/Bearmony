@@ -1,0 +1,22 @@
+{
+    "12-bar Blues":            ["I","I","I","I","IV","IV","I","I","V","IV","I","I"],
+    "Quick Change Blues":      ["I","IV","I","I","IV","IV","I","I","V","IV","I","V"],
+    "I-IV-V-I":                ["I","IV","V","I"],
+    "I-V-vi-IV":               ["I","V","vi","IV"],
+    "vi-IV-I-V":               ["vi","IV","I","V"],
+    "ii-V-I":                  ["ii","V","I"],
+    "I-vi-ii-V":               ["I","vi","ii","V"],
+    "Pachelbel's Canon":       ["I","V","vi","iii","IV","I","IV","V"],
+    "Circle of Fifths":        ["I","IV","vii°","iii","vi","ii","V","I"],
+    "Andalusian Cadence":      ["i","♭VII","♭VI","V"],
+    "Backdoor":                ["iv","♭VII","I"],
+    "Coltrane Changes":        ["I","III","VI","II","V","I"],
+    "Dorian i–IV":             ["i","IV"],
+    "Phrygian i–♭II":          ["i","♭II"],
+    "Lydian I–II":             ["I","II"],
+    "Mixolydian I–♭VII":       ["I","♭VII"],
+    "Aeolian i–♭VII–♭VI–♭VII":  ["i","♭VII","♭VI","♭VII"],
+    "Major Turnaround":        ["I","vi","ii","V"],
+    "Minor Turnaround":        ["i","♭VI","♭III","♭VII"],
+    "Axis of Awesome":         ["I","V","vi","IV"]
+  }
