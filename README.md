@@ -2,6 +2,8 @@
 
 **Bearmony** Bearmony MidiGen (Demo) – a simple program with a library of all musical chord and scale combinations, featuring real-time playback on various instruments and the ability to create MIDI files for songwriting.
 
+Use the GUI to choose notes/chords/progressions, set arpeggio/tempo/velocity for playbacn, pick an instrument, and export MIDI.
+
 ## Features
 - Chords and full progressions
 - Arpeggios (Asc/Desc/Up-Down/Random)
@@ -50,7 +52,7 @@ pip install -r requirements.txt
 python -m bearmony
 ```
 
-Use the GUI to choose notes/chords/progressions, set arpeggio/tempo/velocity, pick an instrument, and export MIDI.
+
 
 ---
 
