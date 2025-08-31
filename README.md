@@ -6,7 +6,7 @@
 - Chords and full progressions
 - Arpeggios (Asc/Desc/Up-Down/Random)
 - Tempo, note value, velocity, loop count, basic FX
-- General MIDI instrument selection (0–127)
+- General MIDI instrument selection
 - Live playback (FluidSynth + SoundFont)
 - MIDI export (chord or progression)
 
