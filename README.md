@@ -1,4 +1,4 @@
-## ****BEARMONY** — MIDI Chord, Apeggio & Progression Tool
+## **BEARMONY** — MIDI Chord, Apeggio & Progression Tool
 
 **Bearmony** turns chords and progressions into MIDI. 
 Pick root notes, chord types/sizes, roman-numeral progressions, and arpeggio modes (Asc / Desc / Up-Down / Random). 
