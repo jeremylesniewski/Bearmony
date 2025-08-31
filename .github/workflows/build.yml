@@ -1,0 +1,67 @@
+name: Build Bearmony Standalone
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      - name: Fetch MuseScore_General.sf2
+        run: |
+          mkdir -p bearmony/assets/soundfonts
+          curl -L "https://your-stable-url/MuseScore_General.sf2" -o bearmony/assets/soundfonts/MuseScore_General.sf2
+      - name: Build app with PyInstaller
+        run: |
+          pyinstaller --windowed --name Bearmony bearmony/__main__.py \
+            --add-data "bearmony/data/chord_formulas.json:bearmony/data" \
+            --add-data "bearmony/data/progressions.json:bearmony/data" \
+            --add-data "bearmony/data/scales.json:bearmony/data" \
+            --add-data "bearmony/assets/soundfonts/MuseScore_General.sf2:bearmony/assets/soundfonts" \
+            --add-data "bearmony/assets/LICENSE_SOUNDFONT.txt:bearmony/assets"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Bearmony-macOS
+          path: dist/Bearmony.app
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+      - name: Fetch MuseScore_General.sf2
+        run: |
+          mkdir bearmony\assets\soundfonts
+          curl -L "https://your-stable-url/MuseScore_General.sf2" -o bearmony\assets\soundfonts\MuseScore_General.sf2
+      - name: Build app with PyInstaller
+        run: |
+          pyinstaller -F -w -n bearmony bearmony\__main__.py ^
+            --add-data "bearmony\data\chord_formulas.json;bearmony\data" ^
+            --add-data "bearmony\data\progressions.json;bearmony\data" ^
+            --add-data "bearmony\data\scales.json;bearmony\data" ^
+            --add-data "bearmony\assets\soundfonts\MuseScore_General.sf2;bearmony\assets\soundfonts" ^
+            --add-data "bearmony\assets\LICENSE_SOUNDFONT.txt;bearmony\assets"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: Bearmony-Windows
+          path: dist/bearmony.exe

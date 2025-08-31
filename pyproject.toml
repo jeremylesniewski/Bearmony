@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bearmony"
+version = "0.1.0"
+requires-python = ">=3.8"
+dependencies = [
+  # Add your requirements here, e.g. "mido", "pyfluidsynth"
+]
+readme = "README.md"
+license = { text = "MIT" }
+
+[tool.setuptools.package-data]
+bearmony = [
+  "data/*.json",
+  "assets/LICENSE_SOUNDFONT.txt",
+  "assets/soundfonts/*.sf2",
+]

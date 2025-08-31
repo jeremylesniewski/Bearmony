@@ -20,29 +20,7 @@ except Exception:
 
 from importlib import resources
 
-def _find_sf2():
-    # 1) env override
-    env = os.environ.get("BEARMONY_SF2")
-    if env and os.path.isfile(env):
-        return env
-
-    here = os.path.dirname(__file__)                               # bearmony/gui
-    project_root = os.path.abspath(os.path.join(here, "..", "..")) # repo root
-    exe_dir = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else None
-    meipass = getattr(sys, "_MEIPASS", None)                       # PyInstaller data dir
-
-    candidates = [project_root, here, os.getcwd(), exe_dir, meipass]
-    names = ["FluidR3_GM.sf2"]  # try exact first
-
-    for d in [p for p in candidates if p and os.path.isdir(p)]:
-        for name in names:
-            p = os.path.join(d, name)
-            if os.path.isfile(p):
-                return p
-        for f in os.listdir(d):
-            if f.lower().endswith(".sf2"):
-                return os.path.join(d, f)
-    return None
+from bearmony.audio import resolve_soundfont
 
 def load_json(fname):
     try:
@@ -89,166 +67,190 @@ def roman_to_offset(r):
 class MidiApp:
     def __init__(self, root):
         self.root = root
-        self.pitch_octave_var = tk.IntVar(value=0)
-        self.root.title("Bearmony")  # Program title
-        self.root.tk.call('tk', 'scaling', 1.0)
-        for fn in ["TkDefaultFont","TkMenuFont","TkHeadingFont","TkTooltipFont"]:
-            try:
-                tkfont.nametofont(fn).configure(size=10)
-            except Exception:
-                pass
-
-        # ---- SoundFont handling ----
         self.fs = None
-        if HAVE_FLUID:
-            sf = _find_sf2()   # <<< use the top-level helper (handles _MEIPASS)
-            if sf:
-                self.fs = fluidsynth.Synth(samplerate=44100)
-                self.fs.start()
-                self.sf_id = self.fs.sfload(sf)
-                self.fs.program_select(0, self.sf_id, 0, 0)
-            else:
-                messagebox.showwarning(
-                    "SoundFont not found",
-                    "No .sf2 SoundFont found. Live playback disabled.\n"
-                    "Export to MIDI still works. Put a .sf2 next to the app/EXE or set BEARMONY_SF2."
-                )
-        else:
-            messagebox.showwarning(
-                "Fluidsynth not available",
-                "pyfluidsynth/fluidsynth not installed. Live playback disabled.\n"
-                "Export to MIDI still works."
-            )
-
+        self.sf2_path = None
+        self.sf_id = None
         self.playing = False
         self.stop_event = None
-
-        # Variables
+        self.played_notes_history = []
+        # Tkinter variables
         self.root_note_var = tk.StringVar(value=ALL_NOTES[0])
         self.chord_size_var = tk.IntVar(value=3)
         self.chord_type_var = tk.StringVar()
-        self.note_value_var = tk.IntVar(value=4)
-        self.swing_var = tk.DoubleVar(value=0.0)
         self.instrument_var = tk.StringVar(value=list(INSTRUMENTS.keys())[0])
-        self.playback_mode_var = tk.StringVar(value="Chord")
-        self.progression_var = tk.StringVar(value=list(PROGRESSIONS.keys())[0])
+        self.pitch_octave_var = tk.IntVar(value=0)
+        self.velocity_mode_var = tk.StringVar(value="Normal")
+        self.note_value_var = tk.IntVar(value=4)
         self.tempo_var = tk.IntVar(value=120)
-        self.velocity_mode_var = tk.StringVar(value="Dynamic")
-        self.volume_var = tk.IntVar(value=100)
+        self.swing_var = tk.DoubleVar(value=0)
         self.loop_var = tk.BooleanVar(value=False)
+        self.progression_var = tk.StringVar(value=list(PROGRESSIONS.keys())[0])
         self.reverb_room_var = tk.DoubleVar(value=0.5)
         self.reverb_damp_var = tk.DoubleVar(value=0.5)
-        self.reverb_level_var = tk.DoubleVar(value=0.2)
-        self.loop_count_var = tk.IntVar(value=4)
+        self.reverb_level_var = tk.DoubleVar(value=0.5)
+        self.volume_var = tk.IntVar(value=100)
+        self.playback_mode_var = tk.StringVar(value="Chord")
+        self.loop_count_var = tk.IntVar(value=1)
         self.duration_seconds_var = tk.IntVar(value=0)
-        self.current_notes_var = tk.StringVar(value="")
-
-        self.loop_count_var.trace_add('write', self.update_duration)
-        self.tempo_var.trace_add('write', self.update_duration)
-        self.note_value_var.trace_add('write', self.update_duration)
-        self.playback_mode_var.trace_add('write', self.update_duration)
-        self.chord_size_var.trace_add('write', self.update_duration)
-
+        # Build UI
         self.build_ui()
-        self.update_chord_types()
-        self.update_duration()
+    def choose_sf2(self):
+        path = filedialog.askopenfilename(title="Select SoundFont (.sf2)", filetypes=[("SoundFont Files", "*.sf2")])
+        if path:
+            self.sf2_path = path
+            if HAVE_FLUID:
+                if self.fs:
+                    self.fs.delete()
+                self.fs = fluidsynth.Synth()
+                self.fs.start(driver='coreaudio')  # macOS default
+                self.sf_id = self.fs.sfload(self.sf2_path)
+                prog = INSTRUMENTS[self.instrument_var.get()]
 
-    # -------- UI --------
     def build_ui(self):
-        main = ttk.Frame(self.root, padding=5)
+        self.root.title("Bearmony MidiGen Beta")
+        main = ttk.Frame(self.root, padding=4)
         main.pack(fill='both', expand=True)
 
-        chord_frame = ttk.LabelFrame(main, text="Chord", padding=5)
-        chord_frame.grid(row=0, column=0, sticky='nsew', padx=5, pady=5)
+        menubar = tk.Menu(self.root)
+        audio_menu = tk.Menu(menubar, tearoff=0)
+        audio_menu.add_command(label="Choose SoundFont…", command=self.choose_sf2)
+        menubar.add_cascade(label="Audio", menu=audio_menu)
+        self.root.config(menu=menubar)
 
-        ttk.Label(chord_frame, text="Root Note:").grid(row=0, column=0, sticky='w')
-        ttk.Combobox(chord_frame, textvariable=self.root_note_var, values=ALL_NOTES, state='readonly', width=6).grid(row=0, column=1)
-
-        ttk.Label(chord_frame, text="Chord Size:").grid(row=1, column=0, sticky='w')
-        size_cb = ttk.Combobox(chord_frame, textvariable=self.chord_size_var, values=sorted(CHORD_DEFINITIONS.keys()), state='readonly', width=6)
-        size_cb.grid(row=1, column=1)
+        # Chord Selection and Chord Display (side by side)
+        chord_sel_frame = ttk.LabelFrame(main, text="Chord Selection", padding=4)
+        chord_sel_frame.grid(row=0, column=0, sticky='nsew', padx=2, pady=2)
+        chord_sel_frame.columnconfigure(0, weight=1)
+        chord_sel_frame.columnconfigure(1, weight=1)
+        # Parameters (left)
+        param_frame = ttk.Frame(chord_sel_frame)
+        param_frame.grid(row=0, column=0, sticky='nsew')
+        ttk.Label(param_frame, text="Root Note:").grid(row=0, column=0, sticky='w')
+        ttk.Combobox(param_frame, textvariable=self.root_note_var, values=ALL_NOTES, state='readonly').grid(row=0, column=1, sticky='ew')
+        ttk.Label(param_frame, text="Chord Size:").grid(row=1, column=0, sticky='w')
+        size_cb = ttk.Combobox(param_frame, textvariable=self.chord_size_var, values=sorted(CHORD_DEFINITIONS.keys()), state='readonly')
+        size_cb.grid(row=1, column=1, sticky='ew')
         size_cb.bind('<<ComboboxSelected>>', lambda e: self.update_chord_types())
+        ttk.Label(param_frame, text="Chord Type:").grid(row=2, column=0, sticky='w')
+        self.chord_cb = ttk.Combobox(param_frame, textvariable=self.chord_type_var, state='readonly')
+        self.chord_cb.grid(row=2, column=1, sticky='ew')
+        # Chord Display (right, locked size box)
+        chord_display_frame = ttk.Frame(chord_sel_frame, relief='ridge', borderwidth=2, width=120, height=60)
+        chord_display_frame.grid(row=0, column=1, sticky='nsew', padx=(10,0))
+        chord_display_frame.grid_propagate(False)
+        chord_display_frame.rowconfigure(0, weight=1)
+        chord_display_frame.columnconfigure(0, weight=1)
+        self.chord_display_var = tk.StringVar()
+        self.chord_name_label = ttk.Label(
+            chord_display_frame,
+            textvariable=self.chord_display_var,
+            font=("TkDefaultFont", 16),
+            anchor='center',
+            background='#f0f0f0',
+            width=10
+        )
+        self.chord_name_label.grid(row=0, column=0, sticky='nsew', ipadx=10, ipady=20)
+        def update_chord_display(*args):
+            note = self.root_note_var.get()
+            ctype = self.chord_type_var.get()
+            self.chord_display_var.set(f"{note}{ctype}")
+        self.root_note_var.trace_add('write', update_chord_display)
+        self.chord_type_var.trace_add('write', update_chord_display)
+        update_chord_display()
 
-        ttk.Label(chord_frame, text="Chord Type:").grid(row=2, column=0, sticky='w')
-        self.chord_cb = ttk.Combobox(chord_frame, textvariable=self.chord_type_var, state='readonly', width=8)
-        self.chord_cb.grid(row=2, column=1)
+        # Mode & Progression section (above export)
+        mode_prog_frame = ttk.LabelFrame(main, text="Mode & Progression", padding=4)
+        mode_prog_frame.grid(row=1, column=0, sticky='ew', padx=2, pady=2)
+        mode_prog_frame.columnconfigure(0, weight=1)
+        mode_prog_frame.columnconfigure(1, weight=1)
+        ttk.Label(mode_prog_frame, text="Mode:").grid(row=0, column=0, sticky='w')
+        ttk.Combobox(mode_prog_frame, textvariable=self.playback_mode_var, values=["Chord","Arpeggio Asc","Arpeggio Desc","Up-Down","Random Arp"], state='readonly').grid(row=0, column=1, sticky='ew')
+        ttk.Label(mode_prog_frame, text="Progression:").grid(row=1, column=0, sticky='w')
+        ttk.Combobox(mode_prog_frame, textvariable=self.progression_var, values=list(PROGRESSIONS.keys()), state='readonly').grid(row=1, column=1, sticky='ew')
+        ttk.Label(mode_prog_frame, text="Note Value:").grid(row=2, column=0, sticky='w')
+        ttk.Combobox(mode_prog_frame, textvariable=self.note_value_var, values=[1,2,4,8,16], state='readonly').grid(row=2, column=1, sticky='ew')
 
-        ttk.Label(chord_frame, text="Pitch Octave:").grid(row=5, column=0, sticky='w')
-        ttk.Spinbox(chord_frame, from_=-4, to=4, textvariable=self.pitch_octave_var, width=6, state='readonly').grid(row=5, column=1, sticky='w')
+        # Export section (bottom left)
+        export_frame = ttk.LabelFrame(main, text="Export", padding=4)
+        export_frame.grid(row=2, column=0, sticky='ew', padx=2, pady=2)
+        export_frame.columnconfigure(0, weight=1)
+        export_frame.columnconfigure(1, weight=1)
+        ttk.Label(export_frame, text="Tempo (BPM):").grid(row=0, column=0, sticky='w')
+        self.export_tempo_var = tk.IntVar(value=self.tempo_var.get())
+        tempo_entry = ttk.Entry(export_frame, textvariable=self.export_tempo_var)
+        tempo_entry.grid(row=0, column=1, sticky='ew')
+        ttk.Label(export_frame, text="Length (tacts):").grid(row=1, column=0, sticky='w')
+        self.export_tacts_var = tk.IntVar(value=4)
+        tacts_slider = ttk.Scale(export_frame, from_=1, to=32, variable=self.export_tacts_var, orient='horizontal')
+        tacts_slider.grid(row=1, column=1, sticky='ew')
+        tacts_slider.config(command=lambda v: self.export_tacts_var.set(int(float(v))))
+        self.tacts_label = ttk.Label(export_frame, text=f"Tacts: {self.export_tacts_var.get()}")
+        self.tacts_label.grid(row=2, column=0, columnspan=2, sticky='ew')
+        def update_tacts_label(*args):
+            self.tacts_label.config(text=f"Tacts: {self.export_tacts_var.get()}")
+        self.export_tacts_var.trace_add('write', update_tacts_label)
+        ttk.Label(export_frame, text="Duration (s):").grid(row=3, column=0, sticky='w')
+        self.export_duration_var = tk.StringVar(value="0")
+        duration_label = ttk.Label(export_frame, textvariable=self.export_duration_var)
+        duration_label.grid(row=3, column=1, sticky='ew')
+        def update_export_duration(*args):
+            bpm = self.export_tempo_var.get()
+            tacts = self.export_tacts_var.get()
+            seconds = (tacts * 4 * 60) / bpm if bpm > 0 else 0
+            self.export_duration_var.set(f"{seconds:.1f}")
+        self.export_tempo_var.trace_add('write', update_export_duration)
+        self.export_tacts_var.trace_add('write', update_export_duration)
+        update_export_duration()
+        self.export_tempo_velocity = tk.BooleanVar(value=True)
+        ttk.Checkbutton(export_frame, text="Include velocity info", variable=self.export_tempo_velocity).grid(row=4, column=0, columnspan=2, sticky='ew')
+        ttk.Button(export_frame, text="Chord MIDI", command=self.export_chord_midi).grid(row=5, column=0, pady=2, sticky='ew')
+        ttk.Button(export_frame, text="Prog MIDI",  command=self.export_prog_midi).grid(row=5, column=1, pady=2, sticky='ew')
 
-        values_frame = ttk.LabelFrame(main, text="Values", padding=5)
-        values_frame.grid(row=0, column=1, sticky='nsew', padx=5, pady=5)
+        # Playback Section (right, split into three)
+        # Instrument Settings
+        instr_settings_frame = ttk.LabelFrame(main, text="Instrument Settings", padding=4)
+        instr_settings_frame.grid(row=0, column=1, sticky='nsew', padx=2, pady=2)
+        instr_settings_frame.columnconfigure(0, weight=1)
+        instr_settings_frame.columnconfigure(1, weight=1)
+        ttk.Label(instr_settings_frame, text="Pitch Octave:").grid(row=0, column=0, sticky='w')
+        ttk.Spinbox(instr_settings_frame, from_=-4, to=4, textvariable=self.pitch_octave_var, state='readonly').grid(row=0, column=1, sticky='ew')
+        ttk.Label(instr_settings_frame, text="Instrument:").grid(row=1, column=0, sticky='w')
+        ttk.Combobox(instr_settings_frame, textvariable=self.instrument_var, values=list(INSTRUMENTS.keys()), state='readonly').grid(row=1, column=1, sticky='ew')
+        ttk.Label(instr_settings_frame, text="Velocity:").grid(row=2, column=0, sticky='w')
+        ttk.Combobox(instr_settings_frame, textvariable=self.velocity_mode_var, values=["Light","Normal","Strong","Dynamic"], state='readonly').grid(row=2, column=1, sticky='ew')
+    # ...existing code...
 
-        ttk.Label(values_frame, text="Mode:").grid(row=0, column=0, sticky='w')
-        ttk.Combobox(values_frame, textvariable=self.playback_mode_var, values=["Chord","Arpeggio Asc","Arpeggio Desc","Up-Down","Random Arp"], state='readonly', width=12).grid(row=0, column=1)
-
-        ttk.Label(values_frame, text="Progression:").grid(row=1, column=0, sticky='w')
-        ttk.Combobox(values_frame, textvariable=self.progression_var, values=list(PROGRESSIONS.keys()), state='readonly', width=12).grid(row=1, column=1)
-
-        ttk.Label(values_frame, text="Tempo (BPM):").grid(row=2, column=0, sticky='w')
-        ttk.Entry(values_frame, textvariable=self.tempo_var, width=6).grid(row=2, column=1, sticky='w')
-
-        ttk.Label(values_frame, text="Note Value:").grid(row=3, column=0, sticky='w')
-        ttk.Combobox(values_frame, textvariable=self.note_value_var, values=[1,2,4,8,16], state='readonly', width=6).grid(row=3, column=1)
-
-        ttk.Label(values_frame, text="Velocity:").grid(row=4, column=0, sticky='w')
-        ttk.Combobox(values_frame, textvariable=self.velocity_mode_var, values=["Light","Normal","Strong","Dynamic"], state='readonly', width=10).grid(row=4, column=1)
-
-        instrument_frame = ttk.LabelFrame(main, text="Instrument", padding=5)
-        instrument_frame.grid(row=1, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
-
-        ttk.Label(instrument_frame, text="Select:").grid(row=0, column=0, sticky='w')
-        ttk.Combobox(instrument_frame, textvariable=self.instrument_var, values=list(INSTRUMENTS.keys()), state='readonly', width=20).grid(row=0, column=1, sticky='w')
-
-        playback_frame = ttk.LabelFrame(main, text="Playback", padding=5)
-        playback_frame.grid(row=2, column=0, columnspan=2, sticky='nsew', padx=5, pady=5)
-
-        ttk.Button(playback_frame, text="▶ Chord", command=self.play_chord, width=10).grid(row=0, column=0, padx=5)
-        ttk.Button(playback_frame, text="▶ Progression", command=self.jam_progression, width=10).grid(row=0, column=1, padx=5)
-        ttk.Button(playback_frame, text="⏹ Stop", command=self.stop_play, width=10).grid(row=0, column=2, padx=5)
-        ttk.Checkbutton(playback_frame, text="Loop", variable=self.loop_var).grid(row=1, column=0, sticky='w')
-
-        ttk.Label(playback_frame, text="Volume (dB):").grid(row=1, column=1, sticky='e')
-        vol_scale = ttk.Scale(playback_frame, from_=0, to=127, variable=self.volume_var, orient='horizontal', length=100)
-        vol_scale.grid(row=1, column=2, sticky='w')
-
-        def update_volume_label(*args):
-            vol_db = int((self.volume_var.get()/127)*60)
-            self.volume_db_label.config(text=f"-{60 - vol_db} dB")
-
-        self.volume_var.trace_add('write', update_volume_label)
-        self.volume_db_label = ttk.Label(playback_frame, text="-0 dB")
-        self.volume_db_label.grid(row=1, column=3, sticky='w')
-
-        effects_frame = ttk.LabelFrame(main, text="Effects", padding=5)
-        effects_frame.grid(row=3, column=0, sticky='nsew', padx=5, pady=5)
-
+        # Effects
+        effects_frame = ttk.LabelFrame(main, text="Effects", padding=4)
+        effects_frame.grid(row=1, column=1, sticky='nsew', padx=2, pady=2)
+        effects_frame.columnconfigure(0, weight=1)
+        effects_frame.columnconfigure(1, weight=1)
         ttk.Label(effects_frame, text="Reverb Room:").grid(row=0, column=0, sticky='w')
-        ttk.Scale(effects_frame, from_=0, to=1, variable=self.reverb_room_var, orient='horizontal', length=100).grid(row=0, column=1)
-
+        ttk.Scale(effects_frame, from_=0, to=1, variable=self.reverb_room_var, orient='horizontal').grid(row=0, column=1, sticky='ew')
         ttk.Label(effects_frame, text="Damp:").grid(row=1, column=0, sticky='w')
-        ttk.Scale(effects_frame, from_=0, to=1, variable=self.reverb_damp_var, orient='horizontal', length=100).grid(row=1, column=1)
-
+        ttk.Scale(effects_frame, from_=0, to=1, variable=self.reverb_damp_var, orient='horizontal').grid(row=1, column=1, sticky='ew')
         ttk.Label(effects_frame, text="Level:").grid(row=2, column=0, sticky='w')
-        ttk.Scale(effects_frame, from_=0, to=1, variable=self.reverb_level_var, orient='horizontal', length=100).grid(row=2, column=1)
+        ttk.Scale(effects_frame, from_=0, to=1, variable=self.reverb_level_var, orient='horizontal').grid(row=2, column=1, sticky='ew')
 
-        export_frame = ttk.LabelFrame(main, text="Export", padding=5)
-        export_frame.grid(row=3, column=1, sticky='nsew', padx=5, pady=5)
+        # Playback Control
+        control_frame = ttk.LabelFrame(main, text="Playback Control", padding=4)
+        control_frame.grid(row=2, column=1, sticky='nsew', padx=2, pady=2)
+        control_frame.columnconfigure(0, weight=1)
+        control_frame.columnconfigure(1, weight=1)
+        control_frame.columnconfigure(2, weight=1)
+        ttk.Button(control_frame, text="▶ Chord", command=self.play_chord).grid(row=0, column=0, padx=2, pady=2, sticky='ew')
+        ttk.Button(control_frame, text="▶ Progression", command=self.jam_progression).grid(row=0, column=1, padx=2, pady=2, sticky='ew')
+        ttk.Button(control_frame, text="⏹ Stop", command=self.stop_play).grid(row=0, column=2, padx=2, pady=2, sticky='ew')
+        ttk.Checkbutton(control_frame, text="Loop", variable=self.loop_var).grid(row=1, column=0, columnspan=3, sticky='w')
 
-        ttk.Label(export_frame, text="Loops:").grid(row=0, column=0, sticky='w')
-        loop_slider = ttk.Scale(export_frame, from_=1, to=20, variable=self.loop_count_var, orient='horizontal', length=100)
-        loop_slider.grid(row=0, column=1, sticky='w')
+        # Notes Played Bar (bottom, spanning window)
+        notes_bar_frame = ttk.Frame(main, padding=4, relief='groove')
+        notes_bar_frame.grid(row=3, column=0, columnspan=2, sticky='ew', padx=2, pady=2)
+        notes_bar_frame.columnconfigure(0, weight=1)
+        self.notes_text = tk.Text(notes_bar_frame, height=2, wrap='none', state='disabled', font=('TkDefaultFont', 10))
+        self.notes_text.grid(row=0, column=0, sticky='ew')
 
-        ttk.Label(export_frame, text="Duration (s):").grid(row=1, column=0, sticky='w')
-        duration_label = ttk.Label(export_frame, textvariable=self.duration_seconds_var)
-        duration_label.grid(row=1, column=1, sticky='w')
-
-        ttk.Button(export_frame, text="Chord MIDI", command=self.export_chord_midi, width=12).grid(row=2, column=0, pady=2)
-        ttk.Button(export_frame, text="Prog MIDI",  command=self.export_prog_midi,  width=12).grid(row=2, column=1, pady=2)
-
-        indicator_frame = ttk.LabelFrame(main, text="Current Values", padding=5)
-        indicator_frame.grid(row=4, column=0, columnspan=2, sticky='ew', padx=5, pady=5)
-        ttk.Label(indicator_frame, textvariable=self.current_notes_var).grid(row=0, column=0, sticky='w')
+    # ...existing code...
 
     def midi_to_note_name(self, midi_num):
         return ALL_NOTES[midi_num % 12] + str(midi_num // 12 - 1)
@@ -260,7 +262,13 @@ class MidiApp:
         mode = self.playback_mode_var.get()
         beat_duration = 60 / bpm
         single_event_duration = beat_duration * (4 / note_value)
-        intervals = CHORD_DEFINITIONS[self.chord_size_var.get()][self.chord_type_var.get()]
+        chord_size = self.chord_size_var.get()
+        chord_type = self.chord_type_var.get()
+        # Fallback: if chord_type is empty, use the first available type
+        if not chord_type:
+            chord_type = list(CHORD_DEFINITIONS[chord_size].keys())[0]
+            self.chord_type_var.set(chord_type)
+        intervals = CHORD_DEFINITIONS[chord_size][chord_type]
         chord_length = len(intervals)
         if mode == 'Chord':
             total_duration = single_event_duration * loops
@@ -272,26 +280,19 @@ class MidiApp:
 
     def update_indicator(self, notes):
         mode = self.playback_mode_var.get()
-        if mode == 'Chord':
-            notes_str = ', '.join(self.midi_to_note_name(n) for n in notes)
-        else:
-            if mode == 'Arpeggio Asc':   seq_notes = notes
-            elif mode == 'Arpeggio Desc':seq_notes = notes[::-1]
-            elif mode == 'Up-Down':      seq_notes = notes + notes[::-1][1:]
-            elif mode == 'Random Arp':   seq_notes = random.sample(notes, len(notes))
-            else:                         seq_notes = notes
-            notes_str = ', '.join(self.midi_to_note_name(n) for n in seq_notes)
-        tempo = self.tempo_var.get()
-        pitch = self.pitch_octave_var.get()
-        chord_type = self.chord_type_var.get()
-        chord_size = self.chord_size_var.get()
-        info = f"Notes: {notes_str} | Tempo: {tempo} BPM | Pitch: {pitch} oct | Chord: {chord_type} ({chord_size})"
-        self.current_notes_var.set(info)
+        notes_str = ', '.join(self.midi_to_note_name(n) for n in notes)
+        # Keep all played notes until stop is clicked
+        self.played_notes_history.append(notes_str)
+        self.notes_text.config(state='normal')
+        self.notes_text.delete(1.0, tk.END)
+        self.notes_text.insert(tk.END, ' | '.join(self.played_notes_history))
+        self.notes_text.config(state='disabled')
 
     def update_chord_types(self):
         types = list(CHORD_DEFINITIONS[self.chord_size_var.get()].keys())
         self.chord_cb['values'] = types
-        self.chord_type_var.set(types[0])
+        if self.chord_type_var.get() not in types:
+            self.chord_type_var.set(types[0])
 
     def _get_chord_midis(self, root, intervals):
         pitch_shift = self.pitch_octave_var.get() * 12
@@ -347,12 +348,23 @@ class MidiApp:
         self.playing = False
 
     def play_chord(self):
-        if self.playing: return
-        intervals = CHORD_DEFINITIONS[self.chord_size_var.get()][self.chord_type_var.get()]
+        if self.playing:
+            return
+        if not HAVE_FLUID:
+            messagebox.showerror("Error", "FluidSynth is not available. Please install pyfluidsynth and FluidSynth.")
+            return
+        if not self.fs or not self.sf_id:
+            messagebox.showerror("Error", "No SoundFont loaded. Please select a valid .sf2 file in Settings → Choose SoundFont…")
+            return
+        chord_size = self.chord_size_var.get()
+        chord_type = self.chord_type_var.get()
+        if not chord_type or chord_type not in CHORD_DEFINITIONS[chord_size]:
+            chord_type = list(CHORD_DEFINITIONS[chord_size].keys())[0]
+            self.chord_type_var.set(chord_type)
+        intervals = CHORD_DEFINITIONS[chord_size][chord_type]
         notes = self._get_chord_midis(self.root_note_var.get(), intervals)
-        if self.fs:
-            prog = INSTRUMENTS[self.instrument_var.get()]
-            self.fs.program_select(0, self.sf_id, 0, prog)
+        prog = INSTRUMENTS[self.instrument_var.get()]
+        self.fs.program_select(0, self.sf_id, 0, prog)
         self.update_indicator(notes)
         self.stop_event = threading.Event()
         self.playing = True
@@ -361,26 +373,42 @@ class MidiApp:
     def stop_play(self):
         if self.playing:
             self.stop_event.set()
+        # Clear played notes display
+        self.played_notes_history = []
+        self.notes_text.config(state='normal')
+        self.notes_text.delete(1.0, tk.END)
+        self.notes_text.config(state='disabled')
 
     def jam_progression(self):
-        if self.playing: return
+        if self.playing:
+            return
+        if not HAVE_FLUID:
+            messagebox.showerror("Error", "FluidSynth is not available. Please install pyfluidsynth and FluidSynth.")
+            return
+        if not self.fs or not self.sf_id:
+            messagebox.showerror("Error", "No SoundFont loaded. Please select a valid .sf2 file in Settings → Choose SoundFont…")
+            return
         romans = PROGRESSIONS[self.progression_var.get()]
         base_idx = ALL_NOTES.index(self.root_note_var.get())
         intervals = CHORD_DEFINITIONS[self.chord_size_var.get()][self.chord_type_var.get()]
         self.stop_event = threading.Event()
         self.playing = True
+        self.played_notes_history = []  # Clear only when a new progression starts
         def prog():
-            if self.fs:
-                prog_id = INSTRUMENTS[self.instrument_var.get()]
-                self.fs.program_select(0, self.sf_id, 0, prog_id)
+            prog_id = INSTRUMENTS[self.instrument_var.get()]
+            self.fs.program_select(0, self.sf_id, 0, prog_id)
             self._apply_fx()
             beat = 60.0 / self.tempo_var.get()
             dur = beat * (4.0 / self.note_value_var.get())
+            last_notes_str = None
             for r in romans:
                 offset = roman_to_offset(r)
                 root_midi = 60 + base_idx + offset
                 notes = [root_midi + i for i in intervals]
-                self.update_indicator(notes)
+                notes_str = ', '.join(self.midi_to_note_name(n) for n in notes)
+                if notes_str != last_notes_str:
+                    self.update_indicator(notes)
+                    last_notes_str = notes_str
                 self._play_notes(notes, dur)
                 if self.stop_event.is_set():
                     break
@@ -388,14 +416,21 @@ class MidiApp:
         threading.Thread(target=prog, daemon=True).start()
 
     def export_chord_midi(self):
-        intervals = CHORD_DEFINITIONS[self.chord_size_var.get()][self.chord_type_var.get()]
+        chord_size = self.chord_size_var.get()
+        chord_type = self.chord_type_var.get()
+        if not chord_type or chord_type not in CHORD_DEFINITIONS[chord_size]:
+            chord_type = list(CHORD_DEFINITIONS[chord_size].keys())[0]
+            self.chord_type_var.set(chord_type)
+        intervals = CHORD_DEFINITIONS[chord_size][chord_type]
         notes = self._get_chord_midis(self.root_note_var.get(), intervals)
         fn = filedialog.asksaveasfilename(defaultextension='.mid', filetypes=[('MIDI','*.mid')])
         if not fn: return
         mid = mido.MidiFile(); tr = mido.MidiTrack(); mid.tracks.append(tr)
-        tr.append(mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(self.tempo_var.get())))
+        bpm = self.export_tempo_var.get()
+        if self.export_tempo_velocity.get():
+            tr.append(mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(bpm)))
         ticks = mid.ticks_per_beat
-        note_ticks = int(ticks * (4.0 / self.note_value_var.get()))
+        note_ticks = int(ticks * 4)  # 1 tact = 4 beats
         mode = self.playback_mode_var.get()
         if mode == 'Chord':
             seq_notes = [notes]
@@ -403,10 +438,10 @@ class MidiApp:
             seq_map = {'Arpeggio Asc': notes, 'Arpeggio Desc': notes[::-1],
                        'Up-Down': notes + notes[::-1][1:], 'Random Arp': random.sample(notes, len(notes))}
             seq = seq_map.get(mode, notes); seq_notes = [[n] for n in seq]
-        loops = self.loop_count_var.get()
-        for _ in range(loops):
+        tacts = self.export_tacts_var.get()
+        for _ in range(tacts):
             for chord_notes in seq_notes:
-                vel = self._get_velocity()
+                vel = self._get_velocity() if self.export_tempo_velocity.get() else 100
                 for n in chord_notes:
                     tr.append(mido.Message('note_on', note=n, velocity=vel, time=0))
                 tr.append(mido.Message('note_off', note=chord_notes[0], velocity=0, time=note_ticks))
@@ -417,16 +452,23 @@ class MidiApp:
     def export_prog_midi(self):
         romans = PROGRESSIONS[self.progression_var.get()]
         base_idx = ALL_NOTES.index(self.root_note_var.get())
-        intervals = CHORD_DEFINITIONS[self.chord_size_var.get()][self.chord_type_var.get()]
+        chord_size = self.chord_size_var.get()
+        chord_type = self.chord_type_var.get()
+        if not chord_type or chord_type not in CHORD_DEFINITIONS[chord_size]:
+            chord_type = list(CHORD_DEFINITIONS[chord_size].keys())[0]
+            self.chord_type_var.set(chord_type)
+        intervals = CHORD_DEFINITIONS[chord_size][chord_type]
         fn = filedialog.asksaveasfilename(defaultextension='.mid', filetypes=[('MIDI','*.mid')])
         if not fn: return
         mid = mido.MidiFile(); tr = mido.MidiTrack(); mid.tracks.append(tr)
-        tr.append(mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(self.tempo_var.get())))
+        bpm = self.export_tempo_var.get()
+        if self.export_tempo_velocity.get():
+            tr.append(mido.MetaMessage('set_tempo', tempo=mido.bpm2tempo(bpm)))
         ticks = mid.ticks_per_beat
-        note_ticks = int(ticks * (4.0 / self.note_value_var.get()))
+        note_ticks = int(ticks * 4)  # 1 tact = 4 beats
         mode = self.playback_mode_var.get()
-        loops = self.loop_count_var.get()
-        for _ in range(loops):
+        tacts = self.export_tacts_var.get()
+        for _ in range(tacts):
             for r in romans:
                 offset = roman_to_offset(r)
                 root_midi = 60 + base_idx + offset
@@ -438,7 +480,7 @@ class MidiApp:
                                'Up-Down': chord + chord[::-1][1:], 'Random Arp': random.sample(chord, len(chord))}
                     seq = seq_map.get(mode, chord); seq_notes = [[n] for n in seq]
                 for chord_notes in seq_notes:
-                    vel = self._get_velocity()
+                    vel = self._get_velocity() if self.export_tempo_velocity.get() else 100
                     for n in chord_notes:
                         tr.append(mido.Message('note_on', note=n, velocity=vel, time=0))
                     tr.append(mido.Message('note_off', note=chord_notes[0], velocity=0, time=note_ticks))
