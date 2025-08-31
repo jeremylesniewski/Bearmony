@@ -1,9 +1,6 @@
-## **BEARMONY** — MIDI Chord, Apeggio & Progression Tool
+## **BEARMONY MidiGeb (Demo)** — MIDI Chord, Apeggio & Progression Tool
 
-**Bearmony** turns chords and progressions into MIDI. 
-Pick root notes, chord types/sizes, roman-numeral progressions, and arpeggio modes (Asc / Desc / Up-Down / Random). 
-Control tempo, note value, velocity, loops, basic FX, and General MIDI instrument. 
-Playback uses FluidSynth with a SoundFont you provide.
+**Bearmony** Bearmony MidiGen (Demo) – a simple program with a library of all musical chord and scale combinations, featuring real-time playback on various instruments and the ability to create MIDI files for songwriting.
 
 ## Features
 - Chords and full progressions
