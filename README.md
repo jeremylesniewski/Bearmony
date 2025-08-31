@@ -1,8 +1,8 @@
-## **BEARMONY MidiGen (Demo)** — MIDI Chord, Apeggio & Progression Tool
+## **BEARMONY MidiGen (Demo)** — MIDI Chord, Arpeggio & Progression Tool
 
 **Bearmony** MidiGen (Demo) – a simple program with a library of all musical chord and scale combinations, featuring real-time playback on various instruments and the ability to create MIDI files for songwriting.
 
-Use the GUI to choose notes/chords/progressions, set arpeggio/tempo/velocity for playbacn, pick an instrument, and export MIDI.
+Use the GUI to choose notes/chords/progressions, set arpeggio/tempo/velocity/note value for playback, pick an instrument, and export MIDI.
 
 ## Features
 - Chords and full progressions
@@ -11,14 +11,15 @@ Use the GUI to choose notes/chords/progressions, set arpeggio/tempo/velocity for
 - General MIDI instrument selection
 - Live playback (FluidSynth + SoundFont)
 - MIDI export (chord or progression)
-
+- Modern UI: Mode, Progression, and Note Value selection grouped together for workflow
+- Chord display always shows as "Cmaj7" in a fixed-size box
 
 ## Requirements
 - Python **3.11** recommended (3.8+ supported).  
 - Install deps:
-````
+```
 pip install -r requirements.txt
-````
+```
 
 * For playback you need:
 
@@ -28,13 +29,17 @@ pip install -r requirements.txt
     * Windows: install a FluidSynth runtime or place `fluidsynth.dll` next to the EXE
   * **SoundFont (`.sf2`) — not included. You must provide your own.**
 
-Provide your SoundFont by placing it in the project root (e.g. `FluidR3_GM.sf2`) **or** set:
+SoundFont resolution:
+- Place your SoundFont in the project root (e.g. `FluidR3_GM.sf2`, `GeneralUser.sf2`, or `soundfont.sf2`)
+- Or set the environment variable:
 
 ```bash
 export BEARMONY_SF2=/absolute/path/to/Your.sf2      # macOS/Linux
 # PowerShell:
 # $Env:BEARMONY_SF2 = "C:\path\to\Your.sf2"
 ```
+
+The app will automatically detect the SoundFont using the above logic.
 
 ---
 
@@ -52,7 +57,16 @@ pip install -r requirements.txt
 python -m bearmony
 ```
 
+---
 
+## UI Overview
+- Chord Selection: Choose root note, chord size, and chord type
+- Chord Display: Shows the current chord as "Cmaj7" in a fixed-size box
+- Mode & Progression: Select playback mode, progression, and note value (all grouped together)
+- Instrument Settings: Pick instrument, pitch octave, and velocity
+- Effects: Reverb controls
+- Export: Set tempo, tacts, and export MIDI
+- Playback Control: Play chord/progression, stop, and loop
 
 ---
 
