@@ -1,6 +1,6 @@
 <div align="center" style="margin-bottom: 8px;">
   <img src="bearmony/assets/images/logo.png" alt="Bearmony logo" width="70" style="vertical-align: middle; margin-right: 8px;" />
-  <span style="font-size:2em; font-weight:bold; vertical-align: middle;">BEARMONY</span>
+  <span style="font-size:2em; font-weight:bold; vertical-align: middle;"></span>
 </div>
 
 **Bearmony MidiGen** – a simple program with a library of all musical chord and scale combinations, featuring real-time playback on various instruments and the ability to create MIDI files for songwriting.
