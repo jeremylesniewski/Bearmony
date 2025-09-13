@@ -1,0 +1,38 @@
+{
+    "major": {
+      "intervals": [2, 2, 1, 2, 2, 2, 1],
+      "diatonic": ["maj", "min", "min", "maj", "maj", "min", "dim"]
+    },
+    "natural_minor": {
+      "intervals": [2, 1, 2, 2, 1, 2, 2],
+      "diatonic": ["min", "dim", "maj", "min", "min", "maj", "maj"]
+    },
+    "harmonic_minor": {
+      "intervals": [2, 1, 2, 2, 1, 3, 1],
+      "diatonic": ["min", "dim", "aug", "min", "maj", "maj", "dim"]
+    },
+    "melodic_minor": {
+      "intervals": [2, 1, 2, 2, 2, 2, 1],
+      "diatonic": ["min", "min", "aug", "maj", "maj", "dim", "dim"]
+    },
+    "dorian": {
+      "intervals": [2, 1, 2, 2, 2, 1, 2],
+      "diatonic": ["min", "min", "maj", "maj", "min", "dim", "maj"]
+    },
+    "phrygian": {
+      "intervals": [1, 2, 2, 2, 1, 2, 2],
+      "diatonic": ["min", "maj", "maj", "min", "dim", "maj", "min"]
+    },
+    "lydian": {
+      "intervals": [2, 2, 2, 1, 2, 2, 1],
+      "diatonic": ["maj", "maj", "min", "dim", "maj", "min", "min"]
+    },
+    "mixolydian": {
+      "intervals": [2, 2, 1, 2, 2, 1, 2],
+      "diatonic": ["maj", "min", "dim", "maj", "min", "min", "maj"]
+    },
+    "locrian": {
+      "intervals": [1, 2, 2, 1, 2, 2, 2],
+      "diatonic": ["dim", "maj", "min", "min", "maj", "maj", "min"]
+    }
+  }
